@@ -1,0 +1,12 @@
+{
+  "name": "futurematch-likviditet",
+  "version": "1.0.0",
+  "description": "Futurematch likviditet & budget",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
