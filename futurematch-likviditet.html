@@ -5556,11 +5556,18 @@ function importData(evt){
   const file=evt.target.files[0];
   if(!file)return;
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     try{
       const snapshot=JSON.parse(e.target.result);
       if(!snapshot.data)throw new Error('Ugyldig fil');
       DATA_KEYS.forEach(k=>{if(snapshot.data[k]!==undefined)localStorage.setItem(k,JSON.stringify(snapshot.data[k]));});
+      // Sync imported data to server BEFORE reloading (otherwise initFromServer overwrites it)
+      try{
+        const allKeys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark','fm-kassekred','fm-fakturering','fm-cascade'];
+        const data={};
+        allKeys.forEach(k=>{try{const v=localStorage.getItem(k);if(v!==null)data[k]=JSON.parse(v);}catch(ex){}});
+        await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      }catch(ex){}
       showToast('✓ Data indlæst — genindlæser...');
       setTimeout(()=>location.reload(),800);
     }catch(err){
