@@ -6066,6 +6066,33 @@ async function initFromServer(){
     if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d)){if(v!==null&&v!==undefined)localStorage.setItem(k,JSON.stringify(v));}}
   }catch(e){}
 }
+// ── Auto-synk med server hvert 30 sekunder ────────────────
+let _lastAutoSyncHash=null;
+async function autoSyncFromServer(){
+  // Vent hvis brugeren er ved at skrive
+  const ae=document.activeElement;
+  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable))return;
+  try{
+    const r=await fetch('/api/data');
+    if(!r.ok)return;
+    const d=await r.json();
+    const hash=JSON.stringify(d);
+    if(hash===_lastAutoSyncHash)return; // ingen ændringer
+    _lastAutoSyncHash=hash;
+    // Opdatér localStorage med serverdata
+    for(const[k,v]of Object.entries(d)){if(v!==null&&v!==undefined)localStorage.setItem(k,JSON.stringify(v));}
+    // Genindlæs data i hukommelsen
+    entries=loadEntries();
+    try{const s=localStorage.getItem('fm-leads');if(s){const ld=JSON.parse(s);leads=ld.leads||[];nextLeadId=ld.nextId||leads.length+1;}}catch(e){}
+    // Genrender aktivt faneblad
+    const activeTab=document.querySelector('.tab.active');
+    if(activeTab){const tabId=activeTab.getAttribute('data-tab');if(tabId)renderTabContent(tabId);}
+    // Vis diskret synk-indikator
+    showToast('🔄 Opdateret fra server');
+  }catch(e){}
+}
+function startAutoSync(){setInterval(autoSyncFromServer,30000);}
+
 // ── Migrer SaaS Expert-poster til leads (kører kun hvis nødvendigt) ──
 function migrateSaasExpertsToLeads(){
   const saasEntries=entries.filter(e=>e.category==='SaaS Expert');
@@ -6104,6 +6131,7 @@ function migrateSaasExpertsToLeads(){
 
 async function initApp(){
   await initFromServer();
+  startAutoSync();
   entries=loadEntries();
   nextId=Math.max(200,...entries.map(e=>e.id+1));
   // One-time init: seed ForecastFM with copies of Futurematch entries
