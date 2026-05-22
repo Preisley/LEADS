@@ -5561,7 +5561,9 @@ function importData(evt){
       const snapshot=JSON.parse(e.target.result);
       if(!snapshot.data)throw new Error('Ugyldig fil');
       DATA_KEYS.forEach(k=>{if(snapshot.data[k]!==undefined)localStorage.setItem(k,JSON.stringify(snapshot.data[k]));});
-      // Sync imported data to server BEFORE reloading (otherwise initFromServer overwrites it)
+      // Flag so initFromServer skips overwriting our just-imported data
+      localStorage.setItem('fm-just-imported','1');
+      // Also sync to server
       try{
         const allKeys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark','fm-kassekred','fm-fakturering','fm-cascade'];
         const data={};
@@ -6054,6 +6056,11 @@ function syncToServer(){
   fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
 }
 async function initFromServer(){
+  // If we just imported data, skip loading from server (we already pushed our data up)
+  if(localStorage.getItem('fm-just-imported')){
+    localStorage.removeItem('fm-just-imported');
+    return;
+  }
   try{
     const r=await fetch('/api/data');
     if(r.ok){const d=await r.json();for(const[k,v]of Object.entries(d)){if(v!==null&&v!==undefined)localStorage.setItem(k,JSON.stringify(v));}}
