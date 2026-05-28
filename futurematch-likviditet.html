@@ -4537,8 +4537,18 @@ function renderLeads(){
   // Only tagged leads are shown/counted in the main stats — untagged are collapsed below
   const active=allActive.filter(l=>l.tags&&l.tags.length>0);
   const untaggedLeads=allActive.filter(l=>!l.tags||l.tags.length===0);
-  const afsluttedLeads=leads.filter(l=>isAfsluttet(l));
-  const ikkeInteresseretLeads=leads.filter(l=>isIkkeInteresseret(l));
+  // Søgefilter — gælder også afsluttet/ikke-interesseret-sektionerne
+  const _q=(leadSearch||'').toLowerCase().trim();
+  const _matchesSearch=l=>{
+    if(!_q)return true;
+    const core=[l.name,l.phone||'',l.email||''].some(f=>f.toLowerCase().includes(_q));
+    const sec=[l.category,l.note||''].some(f=>f.toLowerCase().includes(_q));
+    const re=new RegExp('(?:^|\\s)'+_q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+    const log=_q.length>=2&&(l.log||[]).some(e=>re.test(e.text||''));
+    return core||sec||log;
+  };
+  const afsluttedLeads=leads.filter(l=>isAfsluttet(l)&&_matchesSearch(l));
+  const ikkeInteresseretLeads=leads.filter(l=>isIkkeInteresseret(l)&&_matchesSearch(l));
   const potMRR=active.reduce((s,l)=>s+l.amount,0);
 
   // Stats
@@ -6096,6 +6106,36 @@ async function autoSyncFromServer(){
 function startAutoSync(){setInterval(autoSyncFromServer,30000);}
 
 // ── Migrer SaaS Expert-poster til leads (kører kun hvis nødvendigt) ──
+// Sikrer at alle leads med Budget FM-tag har en gyldig budget-post i FM Budget
+function syncBudgetLeadsToEntries(){
+  let changed=false;
+  leads.forEach(l=>{
+    const hasBudgetTag=(l.tags||[]).includes('budget');
+    if(!hasBudgetTag)return;
+    let be=l.budgetEntryId?entries.find(e=>e.id===l.budgetEntryId):null;
+    if(!be){
+      // Opret ny budget-post hvis ingen findes
+      be={id:nextId++,name:l.name,amount:l.amount||0,type:'ind-saas',entity:'Futurematch',
+        category:l.category||'Virksomheder',startMonth:1,freq:1,leadId:l.id,
+        inBudget:true,pipelineTags:['budget']};
+      entries.push(be);
+      l.budgetEntryId=be.id;
+      changed=true;
+    } else {
+      // Sikr at posten faktisk er aktiv i budget
+      if(be.inBudget!==true){be.inBudget=true;changed=true;}
+      if(be.entity!=='Futurematch'){be.entity='Futurematch';changed=true;}
+      if(!be.pipelineTags||!be.pipelineTags.includes('budget')){
+        be.pipelineTags=[...(be.pipelineTags||[]),'budget'];changed=true;
+      }
+      // Hold navn/beløb synkron
+      if(be.name!==l.name){be.name=l.name;changed=true;}
+      if(be.amount!==l.amount&&l.amount!=null){be.amount=l.amount;changed=true;}
+    }
+  });
+  if(changed){saveEntries();saveLeads();}
+}
+
 function migrateSaasExpertsToLeads(){
   const saasEntries=entries.filter(e=>e.category==='SaaS Expert');
   if(!saasEntries.length)return;
@@ -6234,6 +6274,8 @@ async function initApp(){
     localStorage.setItem('fm-leads-fix-v2','1');
   }
   loadKb();loadKbKassekred();loadArk();loadFakturering();
+  // Sikr at alle Budget FM-leads har en gyldig budget-post
+  syncBudgetLeadsToEntries();
   // Reset alle filtreringer ved sideindlæsning
   leadFilterTag=null;leadOwnerFilter=null;
   leadSearch='';
