@@ -787,6 +787,8 @@
 const MONTHS=['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
 const COLORS={Futurematch:'#2563eb',Privat:'#d97706'};
 const fmt=n=>new Intl.NumberFormat('da-DK',{maximumFractionDigits:0}).format(Math.round(Math.abs(n)));
+function freqLabel(f){return{1:'/md',3:'/kvt.',6:'/halvår',12:'/år'}[f]||'/md';}
+function leadFreqLabel(l){if(!l||!l.amount)return'/md';const be=l.budgetEntryId?entries.find(e=>e.id===l.budgetEntryId):null;return freqLabel(be?.freq||1);}
 const fmtSigned=n=>(n<0?'−':'')+fmt(n);
 const fmtK=n=>{const a=Math.abs(n);return a>=1000?(n/1000).toFixed(0)+'k':Math.round(n).toString()};
 
@@ -3940,7 +3942,7 @@ function renderGodeRåd(){
     const hasMeetingDate=!!l.nextContact;
     const meetingMs=hasMeetingDate?new Date(l.nextContact+'T00:00:00').getTime():null;
     const meetingPast=hasMeetingDate&&meetingMs<todayMs;
-    const amtLabel=l.amount?` (${l.amount.toLocaleString('da-DK')} kr/md)`:'';
+    const amtLabel=l.amount?` (${l.amount.toLocaleString('da-DK')} kr${leadFreqLabel(l)})`:'';
 
     // --- Stage-based rules ---
     if(stage==='mode-aftalt'&&meetingPast){
@@ -4228,7 +4230,7 @@ function renderUgePipeline(){
       ${connector}
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:10px;color:#64748b">${stage?`Stadie: <b style="color:${stage.col}">${stage.icon} ${stage.label}</b>`:'Ikke kategoriseret'}</span>
-        ${l.amount?`<span style="font-size:11px;font-weight:800;color:#16a34a;font-family:'DM Mono',monospace">${fmtKr2(l.amount)}/md</span>`:''}
+        ${l.amount?`<span style="font-size:11px;font-weight:800;color:#16a34a;font-family:'DM Mono',monospace">${fmtKr2(l.amount)}${leadFreqLabel(l)}</span>`:''}
       </div>
     </div>`;
   }).join('');
@@ -4293,9 +4295,9 @@ function renderSandsynlighed(){
       return`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border-radius:8px;border:1px solid #f1f5f9">
         <button onclick="goToLead(${l.id})" style="font-size:11px;font-weight:700;color:${pCol(p)};background:none;border:none;padding:0;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;text-decoration:underline;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">➜ ${l.name}</button>
         ${stageChip}
-        <span style="font-size:10px;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtK(l.amount||0)}/md</span>
+        <span style="font-size:10px;color:#64748b;font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtK(l.amount||0)}${leadFreqLabel(l)}</span>
         <span style="font-size:10px;color:#94a3b8;white-space:nowrap">→</span>
-        <span style="font-size:11px;font-weight:800;color:${pCol(p)};font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtK(Math.round((l.amount||0)*p/100))}/md</span>
+        <span style="font-size:11px;font-weight:800;color:${pCol(p)};font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtK(Math.round((l.amount||0)*p/100))}${leadFreqLabel(l)}</span>
       </div>`;
     }).join('');
     return`<div style="background:${pBg(p)};border:1px solid ${pBorder(p)};border-radius:10px;padding:12px 14px">
@@ -4649,10 +4651,10 @@ function renderLeads(){
           <button onclick="setLeadProbability(${l.id},100)"
             style="background:${prob===100?'#d1fae5':'#f8fafc'};border:1px solid ${prob===100?'#059669aa':'#e2e8f0'};border-radius:20px;padding:2px 10px;font-size:10px;cursor:pointer;color:${prob===100?'#059669':'#94a3b8'};font-weight:${prob===100?700:400};transition:all .12s">🏆 Solgt</button>
         </div>
-        <span style="font-size:10px;font-weight:800;color:${probCol};background:${probBg};padding:1px 8px;border-radius:20px;border:1px solid ${probCol}44;margin-left:2px;white-space:nowrap">${prob===100?'🏆 Solgt':prob+'%'} · kr. ${fmt(Math.round((l.amount||0)*prob/100))}/md</span>
+        <span style="font-size:10px;font-weight:800;color:${probCol};background:${probBg};padding:1px 8px;border-radius:20px;border:1px solid ${probCol}44;margin-left:2px;white-space:nowrap">${prob===100?'🏆 Solgt':prob+'%'} · kr. ${fmt(Math.round((l.amount||0)*prob/100))}${leadFreqLabel(l)}</span>
       </div>`:'';
       // (leadBudgetBadge removed — use 💰 Budget FM tag instead)
-      const amtDisplay=`<span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px;color:#ea580c">kr. ${fmt(l.amount)}/md</span>`;
+      const amtDisplay=`<span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px;color:#ea580c">kr. ${fmt(l.amount)}${leadFreqLabel(l)}</span>`;
       // Linked budget entry — for showing/saving entry-level fields in the edit panel
       const be=l.budgetEntryId?entries.find(e=>e.id===l.budgetEntryId):null;
       // Always show budget fields for Expert/Kursusudbydere leads (even without a linked entry yet —
@@ -4693,7 +4695,7 @@ function renderLeads(){
               </select>
             </div>
             <div>
-              <div style="font-size:10px;color:#64748b;margin-bottom:3px">Beløb/md (kr.)</div>
+              <div style="font-size:10px;color:#64748b;margin-bottom:3px">Beløb${leadFreqLabel(l)} (kr.)</div>
               <input id="le-amt-${l.id}" type="number" value="${l.amount}" style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:'DM Mono',monospace">
             </div>
             <div>
