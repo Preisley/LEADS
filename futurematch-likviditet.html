@@ -219,7 +219,6 @@
     </div>
     <div class="chart-box" style="margin-bottom:12px"><div class="chart-title">Overskud / Underskud pr. måned</div><div class="chart-wrap"><canvas id="c-fm-net"></canvas></div></div>
     <div id="fm-monthtable"></div>
-    <div class="form-bar"><button class="add-btn" onclick="toggleEntityForm('fm')">+ Tilføj post</button></div>
     <div class="form-grid" id="ent-form-fm" style="display:none;grid-template-columns:2fr 1fr 1fr 1fr auto">
       <div class="form-group"><label>Beskrivelse</label><input type="text" id="ef-name-fm" placeholder="Navn på post"></div>
       <div class="form-group"><label>Beløb/md (kr.)</label><input type="number" id="ef-amt-fm" placeholder="0"></div>
@@ -253,7 +252,6 @@
     </div>
     <div class="chart-box" style="margin-bottom:12px"><div class="chart-title">Overskud / Underskud pr. måned</div><div class="chart-wrap"><canvas id="c-priv-net"></canvas></div></div>
     <div id="priv-monthtable"></div>
-    <div class="form-bar"><button class="add-btn" onclick="toggleEntityForm('priv')">+ Tilføj post</button></div>
     <div class="form-grid" id="ent-form-priv" style="display:none;grid-template-columns:2fr 1fr 1fr 1fr auto">
       <div class="form-group"><label>Beskrivelse</label><input type="text" id="ef-name-priv" placeholder="Navn på post"></div>
       <div class="form-group"><label>Beløb/md (kr.)</label><input type="number" id="ef-amt-priv" placeholder="0"></div>
@@ -431,7 +429,6 @@
     </div>
 
     <!-- Forecastposter -->
-    <div class="form-bar"><button class="add-btn" onclick="toggleEntityForm('fcfm')">+ Tilføj post</button></div>
     <div class="form-grid" id="ent-form-fcfm" style="display:none;grid-template-columns:2fr 1fr 1fr 1fr auto">
       <div class="form-group"><label>Beskrivelse</label><input type="text" id="ef-name-fcfm" placeholder="Navn på post"></div>
       <div class="form-group"><label>Beløb/md (kr.)</label><input type="number" id="ef-amt-fcfm" placeholder="0"></div>
@@ -1621,10 +1618,13 @@ function renderEntityMonthTable(ent,containerId){
   };
 
   const yr=now.getFullYear()+yo;
+  const formKey={Futurematch:'fm',Privat:'priv',ForecastFM:'fcfm'}[ent]||'';
+  const addBtn=formKey?`<button class="add-btn" onclick="toggleEntityForm('${formKey}')" style="margin-left:auto;font-size:11px;padding:4px 12px">+ Tilføj ind/ud</button>`:'';
   container.innerHTML=`<div style="margin-bottom:12px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Månedsoversigt</span>
       ${yrNav(ent)}
+      ${addBtn}
     </div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
