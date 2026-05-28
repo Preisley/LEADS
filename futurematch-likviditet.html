@@ -233,7 +233,7 @@
       <div class="form-group"><label>Frekvens</label><select id="ef-freq-fm"><option value="1">Månedlig</option><option value="3">Kvartalsvis</option><option value="6">Halvårlig</option><option value="12">Årlig</option></select></div>
       <div class="form-group"><label>Slutter t.o.m. (valgfri)</label><div style="display:flex;gap:4px"><select id="ef-endmonth-fm"><option value="">— ingen slutdato —</option><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">Maj</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Okt</option><option value="11">Nov</option><option value="12">Dec</option></select><input type="number" id="ef-endyear-fm" placeholder="år, f.eks. 2028" style="width:130px"></div></div>
     </div>
-    <div class="tbl-wrap"><table><thead><tr><th>Post</th><th>Type / Frekvens</th><th>Beløb/betaling</th><th>Retning</th><th></th></tr></thead><tbody id="fm-table"></tbody></table></div>
+    <div class="tbl-wrap" style="display:none"><table><thead><tr><th>Post</th><th>Type / Frekvens</th><th>Beløb/betaling</th><th>Retning</th><th></th></tr></thead><tbody id="fm-table"></tbody></table></div>
     <div id="fm-debt"></div>
     <div id="fm-kredit-needed" style="margin-top:16px"></div>
 
@@ -1484,10 +1484,12 @@ function saveEditRow(id,ent){
 function delEntry(id){entries=entries.filter(e=>e.id!==id);saveEntries();renderAll();}
 
 // ── Månedsoversigt ─────────────────────────────────────────
+// Default: ind/ud expanded. Brug `false` for collapsed, `true` (eller manglende) for expanded.
 const expandedMonthSections={};  // key: "ent|ind" or "ent|ud"
 function toggleMonthSection(ent,section,containerId){
   const key=ent+'|'+section;
-  expandedMonthSections[key]=!expandedMonthSections[key];
+  // Toggle: hvis allerede sat til false → sæt til true (åbn). Ellers sæt til false (luk).
+  expandedMonthSections[key]=expandedMonthSections[key]===false;
   renderEntityMonthTable(ent,containerId);
 }
 
@@ -1542,8 +1544,9 @@ function renderEntityMonthTable(ent,containerId){
     winStartBal=bal-prevNet;
   }
 
-  const indOpen=!!expandedMonthSections[ent+'|ind'];
-  const udOpen=!!expandedMonthSections[ent+'|ud'];
+  // Standard: åben — collapsed kun hvis explicit sat til false
+  const indOpen=expandedMonthSections[ent+'|ind']!==false;
+  const udOpen=expandedMonthSections[ent+'|ud']!==false;
 
   const hdr=winMonths.map(w=>{
     const lbl=MONTHS[w.mi]+(w.year!==now.getFullYear()+yo?` '${String(w.year).slice(2)}`:'');
