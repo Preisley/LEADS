@@ -1483,6 +1483,109 @@ function saveEditRow(id,ent){
 }
 function delEntry(id){entries=entries.filter(e=>e.id!==id);saveEntries();renderAll();}
 
+// ── Redigér post via dialog (fra månedsoversigten) ─────────
+function openMonthEntryEdit(id,ent){
+  const e=entries.find(x=>x.id===id);if(!e)return;
+  const isLeadManagedInc=ent==='Futurematch'&&e.type.startsWith('ind')&&(e.category==='SaaS Expert'||e.category==='Kursusudbydere');
+  if(isLeadManagedInc){
+    showToast('Denne post styres via Leads — redigér på lead-kortet i stedet','#d97706');
+    return;
+  }
+  const existing=document.getElementById('month-entry-edit-dialog');
+  if(existing)existing.remove();
+  const typeOpts=['ind-saas','ind-engang','ud-saas','ud-engang'];
+  const typeLabels={'ind-saas':'Løbende ind.','ind-engang':'Engangsind.','ud-saas':'Løbende udg.','ud-engang':'Engangsudg.'};
+  const catOpts=INCOME_CATS.map(c=>`<option${c===(e.category||'Virksomheder')?' selected':''}>${c}</option>`).join('');
+  const mOpts=MONTHS.map((m,i)=>`<option value="${i+1}"${(e.month===i+1)?' selected':''}>${m}</option>`).join('');
+  const smOpts=MONTHS.map((m,i)=>`<option value="${i+1}"${((e.startMonth||1)===i+1)?' selected':''}>${m}</option>`).join('');
+  const fOpts=[1,3,6,12].map(f=>`<option value="${f}"${(e.freq||1)===f?' selected':''}>${FREQ_LABELS[f]}</option>`).join('');
+  const isInd=e.type.startsWith('ind'),isUdSaas=e.type==='ud-saas',isEngang=e.type.includes('engang');
+  const emOpts=`<option value="">— ingen slutdato —</option>`+MONTHS.map((m,i)=>`<option value="${i+1}"${(e.endMonth===i+1)?' selected':''}>${m}</option>`).join('');
+  const inp='width:100%;padding:7px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px;box-sizing:border-box;font-family:inherit';
+  const lbl='font-size:10px;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em;font-weight:700';
+  const dlg=document.createElement('div');
+  dlg.id='month-entry-edit-dialog';
+  dlg.style.cssText='position:fixed;inset:0;background:#0007;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  dlg.onclick=ev=>{if(ev.target===dlg)closeMonthEntryEdit();};
+  dlg.innerHTML=`<div style="background:#fff;border-radius:16px;padding:24px 28px;max-width:560px;width:100%;box-shadow:0 20px 60px #0003;max-height:90vh;overflow-y:auto">
+    <div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:18px">✎ Redigér post</div>
+    <div style="display:grid;gap:12px">
+      <div>
+        <div style="${lbl}">Beskrivelse</div>
+        <input type="text" id="er-name-${id}" value="${e.name.replace(/"/g,'&quot;')}" style="${inp}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="${lbl}">Beløb (kr.)</div>
+          <input type="number" id="er-amt-${id}" value="${e.amount}" style="${inp}">
+        </div>
+        <div>
+          <div style="${lbl}">Type</div>
+          <select id="er-type-${id}" onchange="toggleEditRowType(${id})" style="${inp}">${typeOpts.map(t=>`<option value="${t}"${t===e.type?' selected':''}>${typeLabels[t]}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div id="er-cat-wrap-${id}" style="display:${isInd?'block':'none'}">
+        <div style="${lbl}">Kategori</div>
+        <select id="er-cat-${id}" style="${inp}">${catOpts}</select>
+      </div>
+      <div id="er-debt-wrap-${id}" style="${isUdSaas?'display:grid':'display:none'};grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="${lbl}">Startsaldo gæld</div>
+          <input type="number" id="er-debt-${id}" value="${e.startDebt||0}" style="${inp}">
+        </div>
+        <div>
+          <div style="${lbl}">Rente % p.a.</div>
+          <input type="number" id="er-debtrate-${id}" value="${e.debtRate||0}" step="0.1" style="${inp}">
+        </div>
+      </div>
+      <div id="er-month-wrap-${id}" style="${isEngang?'display:grid':'display:none'};grid-template-columns:1fr 110px;gap:10px">
+        <div>
+          <div style="${lbl}">Måned</div>
+          <select id="er-month-${id}" style="${inp}">${mOpts}</select>
+        </div>
+        <div>
+          <div style="${lbl}">År</div>
+          <input type="number" id="er-year-${id}" value="${e.startYear||new Date().getFullYear()}" style="${inp}">
+        </div>
+      </div>
+      <div id="er-saas-extras-${id}" style="${isEngang?'display:none':'display:block'}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <div style="${lbl}">Starter fra måned</div>
+            <select id="er-smonth-${id}" style="${inp}">${smOpts}</select>
+          </div>
+          <div>
+            <div style="${lbl}">Frekvens</div>
+            <select id="er-freq-${id}" style="${inp}">${fOpts}</select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:10px">
+          <div>
+            <div style="${lbl}">Slutter t.o.m. (valgfri)</div>
+            <select id="er-endmonth-${id}" style="${inp}">${emOpts}</select>
+          </div>
+          <div>
+            <div style="${lbl}">År</div>
+            <input type="number" id="er-endyear-${id}" value="${e.endYear||''}" placeholder="fx 2028" style="${inp}">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:22px;justify-content:space-between;align-items:center">
+      <button onclick="if(confirm('Slet denne post permanent?')){closeMonthEntryEdit();delEntry(${id});}" style="background:none;border:1px solid #fca5a5;border-radius:8px;color:#dc2626;padding:8px 14px;font-size:12px;cursor:pointer;font-weight:600">🗑 Slet</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="closeMonthEntryEdit()" style="background:none;border:1px solid #cbd5e1;border-radius:8px;color:#475569;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:600">Annuller</button>
+        <button onclick="saveEditRow(${id},'${ent}');closeMonthEntryEdit()" style="background:#2563eb;border:none;border-radius:8px;color:#fff;padding:8px 18px;font-size:13px;cursor:pointer;font-weight:700">Gem ændringer</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+}
+function closeMonthEntryEdit(){
+  const dlg=document.getElementById('month-entry-edit-dialog');
+  if(dlg)dlg.remove();
+}
+
 // ── Månedsoversigt ─────────────────────────────────────────
 // Default: ind/ud expanded. Brug `false` for collapsed, `true` (eller manglende) for expanded.
 const expandedMonthSections={};  // key: "ent|ind" or "ent|ud"
@@ -1613,8 +1716,13 @@ function renderEntityMonthTable(ent,containerId){
       }).join('');
       const isEngang=e.type.includes('engang');
       const isFc=(e.pipelineTags||[]).includes('forecast')?' 🔮':'';
+      const isLeadManagedInc=ent==='Futurematch'&&e.type.startsWith('ind')&&(e.category==='SaaS Expert'||e.category==='Kursusudbydere');
+      const editBtns=isLeadManagedInc
+        ?`<span style="font-size:9px;color:#cbd5e1;font-style:italic;margin-left:4px" title="Styres via Leads">🔗</span>`
+        :`<button onclick="event.stopPropagation();openMonthEntryEdit(${e.id},'${ent}')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:0 3px;margin-left:2px" title="Rediger">✎</button>
+          <button onclick="event.stopPropagation();if(confirm('Slet posten ${e.name.replace(/'/g,"\\'")}?'))delEntry(${e.id})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;padding:0 2px" title="Slet">×</button>`;
       return`<tr style="border-top:1px solid #f1f5f9">
-        <td style="padding:4px 12px 4px 20px;font-size:10px;color:#475569;white-space:nowrap;background:#fafafa;max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${e.name}">${e.name}${isFc}<span style="font-size:9px;color:#94a3b8;margin-left:4px">${isEngang?'engang':'løb.'}</span></td>
+        <td style="padding:4px 12px 4px 20px;font-size:10px;color:#475569;white-space:nowrap;background:#fafafa;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${e.name}"><span style="display:inline-block;max-width:120px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${e.name}${isFc}</span><span style="font-size:9px;color:#94a3b8;margin-left:4px">${isEngang?'engang':'løb.'}</span>${editBtns}</td>
         ${cells}
       </tr>`;
     }).join('');
