@@ -978,7 +978,15 @@ function monthlyFromList(entList,year){
 function monthly(ent,year){
   const displayYear=year||THIS_YEAR;
   const isExp=e=>e.type&&e.type.startsWith('ud');
-  const isNonSaasInc=e=>e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert';
+  const isNonSaasInc=e=>{
+    if(!(e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert'))return false;
+    // Hvis linket til et lead: kræver 'budget'-tag
+    if(e.leadId){
+      const lead=leads.find(l=>l.id===e.leadId);
+      if(lead)return(lead.tags||[]).includes('budget');
+    }
+    return true; // direkte post (ingen lead) → altid med
+  };
   // inBudget must also be confirmed by the linked lead having the 'budget' tag
   const isInBudget=e=>{
     if(e.inBudget!==true)return false;
@@ -1116,7 +1124,14 @@ function renderEntity(ent,statsId,barId,balId,tableId){
   if(balHdrEl)balHdrEl.innerHTML=`<span>Løbende saldo</span>${yrNav(ent)}`;
   // Tag-based routing: expenses + non-SaaS income always in, 'budget'/'forecast' tags control the rest
   const isExpE=e=>e.type&&e.type.startsWith('ud');
-  const isNonSaasIncE=e=>e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert';
+  const isNonSaasIncE=e=>{
+    if(!(e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert'))return false;
+    if(e.leadId){
+      const lead=leads.find(l=>l.id===e.leadId);
+      if(lead)return(lead.tags||[]).includes('budget');
+    }
+    return true;
+  };
   const isInBudgetE=e=>{
     if(e.inBudget!==true)return false;
     if(!e.leadId)return true;
@@ -1700,7 +1715,14 @@ function renderEntityMonthTable(ent,containerId){
     return(lead.tags||[]).includes('budget');
   };
   const _isExp=e=>e.type&&e.type.startsWith('ud');
-  const _isNonSaasInc=e=>e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert';
+  const _isNonSaasInc=e=>{
+    if(!(e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category!=='SaaS Expert'))return false;
+    if(e.leadId){
+      const lead=leads.find(l=>l.id===e.leadId);
+      if(lead)return(lead.tags||[]).includes('budget');
+    }
+    return true;
+  };
   const ents=ent==='Futurematch'
     ?entries.filter(e=>_isInBudgetMT(e)||(_isExp(e)&&e.entity==='Futurematch')||_isNonSaasInc(e))
     :ent?entries.filter(e=>e.entity===ent&&e.inBudget!==false):entries.filter(e=>e.inBudget!==false);
@@ -1714,16 +1736,34 @@ function renderEntityMonthTable(ent,containerId){
     const isEngang=e.type.includes('engang');
     const isFc=(e.pipelineTags||[]).includes('forecast')?' 🔮':'';
     const isLeadManagedInc=ent==='Futurematch'&&e.type.startsWith('ind')&&(e.category==='SaaS Expert'||e.category==='Kursusudbydere');
+    // Klikbart navn hvis linket til lead
+    const nameEsc=e.name.replace(/'/g,"\\'");
+    const nameDisplay=e.leadId
+      ?`<a href="#" onclick="event.preventDefault();event.stopPropagation();goToLead(${e.leadId})" style="color:#0891b2;text-decoration:none;font-weight:600;cursor:pointer;border-bottom:1px dashed #67e8f9" title="Gå til lead">${e.name}${isFc}</a>`
+      :`<span title="${e.name}">${e.name}${isFc}</span>`;
     const editBtns=isLeadManagedInc
-      ?`<span style="font-size:9px;color:#cbd5e1;font-style:italic;margin-left:4px" title="Styres via Leads">🔗</span>`
+      ?`<button onclick="event.stopPropagation();goToLead(${e.leadId})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:0 3px;margin-left:2px" title="Gå til lead">🔗</button>`
       :`<button onclick="event.stopPropagation();openMonthEntryEdit(${e.id},'${ent}')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:0 3px;margin-left:2px" title="Rediger">✎</button>
-        <button onclick="event.stopPropagation();if(confirm('Slet posten ${e.name.replace(/'/g,"\\'")}?'))delEntry(${e.id})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;padding:0 2px" title="Slet">×</button>`;
+        <button onclick="event.stopPropagation();if(confirm('Slet posten ${nameEsc}?'))delEntry(${e.id})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;padding:0 2px" title="Slet">×</button>`;
     return`<tr style="border-top:1px solid #f1f5f9">
-      <td style="padding:4px 12px 4px 28px;font-size:10px;color:#475569;white-space:nowrap;background:#fafafa;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${e.name}"><span style="display:inline-block;max-width:120px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${e.name}${isFc}</span><span style="font-size:9px;color:#94a3b8;margin-left:4px">${isEngang?'engang':'løb.'}</span>${editBtns}</td>
+      <td style="padding:4px 12px 4px 28px;font-size:10px;color:#475569;white-space:nowrap;background:#fafafa;max-width:220px;overflow:hidden;text-overflow:ellipsis"><span style="display:inline-block;max-width:140px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle">${nameDisplay}</span><span style="font-size:9px;color:#94a3b8;margin-left:4px">${isEngang?'engang':'løb.'}</span>${editBtns}</td>
       ${cells}
     </tr>`;
   };
   const mkSubHeader=(label,icon,col)=>`<tr><td colspan="${winMonths.length+1}" style="padding:6px 12px 4px 16px;font-size:10px;font-weight:700;color:${col};background:#f8fafc;border-top:1px solid #f1f5f9;text-transform:uppercase;letter-spacing:.06em">${icon} ${label}</td></tr>`;
+  // Delsum-række: viser summen for en gruppe af entries per måned
+  const mkSubtotal=(groupEnts,label,col)=>{
+    const cells=winMonths.map(w=>{
+      const sum=groupEnts.reduce((s,e)=>s+entryMonthAmt(e,w.mi,w.year),0);
+      const bg=w.isCur?'background:#e0f2fe':w.isPast?'background:#f1f5f9':'background:#f8fafc';
+      const dimmed=w.isPast?'opacity:.6':'';
+      return`<td style="text-align:right;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;color:${col};padding:5px 10px;${bg}${dimmed?';'+dimmed:''}">${sum>0?'kr. '+fmt(sum):'·'}</td>`;
+    }).join('');
+    return`<tr style="border-top:1px solid #e2e8f0">
+      <td style="padding:5px 12px 5px 28px;font-size:10px;font-weight:700;color:${col};background:#f8fafc;font-style:italic">↳ Delsum ${label}</td>
+      ${cells}
+    </tr>`;
+  };
   const mkDetailRows=(section)=>{
     const isInd=section==='ind';
     const sectionEnts=ents.filter(e=>e.type.startsWith(isInd?'ind':'ud'));
@@ -1733,9 +1773,20 @@ function renderEntityMonthTable(ent,containerId){
     const expertEnts=sectionEnts.filter(e=>e.category==='SaaS Expert');
     const andetEnts=sectionEnts.filter(e=>e.category!=='Kursusudbydere'&&e.category!=='SaaS Expert');
     let html='';
-    if(kursusEnts.length){html+=mkSubHeader(`Kursusudbyder (${kursusEnts.length})`,'📚','#0891b2');html+=kursusEnts.map(e=>mkOneRow(e,true)).join('');}
-    if(expertEnts.length){html+=mkSubHeader(`Eksperter (${expertEnts.length})`,'⭐','#7c3aed');html+=expertEnts.map(e=>mkOneRow(e,true)).join('');}
-    if(andetEnts.length){html+=mkSubHeader(`Andet (${andetEnts.length})`,'•','#64748b');html+=andetEnts.map(e=>mkOneRow(e,true)).join('');}
+    if(kursusEnts.length){
+      html+=mkSubHeader(`Kursusudbyder (${kursusEnts.length})`,'📚','#0891b2');
+      html+=kursusEnts.map(e=>mkOneRow(e,true)).join('');
+      html+=mkSubtotal(kursusEnts,'kursusudbyder','#0891b2');
+    }
+    if(expertEnts.length){
+      html+=mkSubHeader(`Eksperter (${expertEnts.length})`,'⭐','#7c3aed');
+      html+=expertEnts.map(e=>mkOneRow(e,true)).join('');
+      html+=mkSubtotal(expertEnts,'eksperter','#7c3aed');
+    }
+    if(andetEnts.length){
+      html+=mkSubHeader(`Andet (${andetEnts.length})`,'•','#64748b');
+      html+=andetEnts.map(e=>mkOneRow(e,true)).join('');
+    }
     return html;
   };
 
