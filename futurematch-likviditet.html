@@ -3556,7 +3556,24 @@ function setNextContact(id,date){
 function setLeadProbability(id,pct){
   const l=leads.find(l=>l.id===id);
   if(!l)return;
-  l.probability=Number(pct);
+  const p=Number(pct);
+  l.probability=p;
+  // Auto: sandsynlighed ≥ 80% → aktivér FM Forecast-tag automatisk
+  if(p>=80&&p<100){
+    if(!l.tags)l.tags=[];
+    if(!l.tags.includes('forecast')){
+      l.tags.push('forecast');
+      // Opret tilknyttet ForecastFM-post hvis ikke allerede til stede
+      if(!l.forecastEntryId){
+        const newEntry={id:nextId++,name:l.name,amount:l.amount||0,type:'ind-saas',entity:'ForecastFM',
+          category:l.category||'Virksomheder',startMonth:1,freq:1,leadId:l.id,pipelineTags:['forecast']};
+        entries.push(newEntry);
+        l.forecastEntryId=newEntry.id;
+        saveEntries();
+      }
+      showToast(`📈 ${l.name} er automatisk markeret som FM Forecast (${p}%)`,'#7c3aed');
+    }
+  }
   saveLeads();renderLeadsStayOnCard(id);
 }
 function toggleEntryEdit(id){

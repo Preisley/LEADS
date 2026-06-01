@@ -5,6 +5,7 @@ const path = require('path');
 const PORT      = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data.json');
 const HTML_FILE = path.join(__dirname, 'futurematch-likviditet.html');
+const USERNAME  = process.env.APP_USERNAME || '';
 const PASSWORD  = process.env.APP_PASSWORD || '';
 
 // ── Upstash Redis (persistent database) ───────────────────
@@ -51,10 +52,18 @@ function checkAuth(req, res) {
     return false;
   }
   const decoded = Buffer.from(auth.slice(6), 'base64').toString();
-  const pass = decoded.split(':').slice(1).join(':');
+  const idx = decoded.indexOf(':');
+  const user = idx >= 0 ? decoded.slice(0, idx) : '';
+  const pass = idx >= 0 ? decoded.slice(idx + 1) : '';
+  // Hvis APP_USERNAME er sat, kræves matchende brugernavn. Ellers accepteres alle brugernavne.
+  if (USERNAME && user !== USERNAME) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Futurematch"' });
+    res.end('Forkert brugernavn eller adgangskode');
+    return false;
+  }
   if (pass !== PASSWORD) {
     res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Futurematch"' });
-    res.end('Forkert adgangskode');
+    res.end('Forkert brugernavn eller adgangskode');
     return false;
   }
   return true;
