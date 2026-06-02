@@ -3721,17 +3721,16 @@ function saveLeadEdit(id){
   if(cat==='SaaS Expert')l.tags.push('expert');
   if(cat==='Kursusudbydere')l.tags.push('kursusudbyder');
   // Sync linked budget entry (name + amount + entry-specific fields)
-  // For Expert/Kursusudbydere leads with no budget entry yet: auto-create one on first save
+  // VIGTIGT: Vi opretter IKKE automatisk en budget-post eller tilføjer 'budget'-tag
+  // medmindre brugeren selv har sat 'budget'-tagget på leadet.
+  // Hvis brugeren tagger 'budget', håndteres oprettelsen i toggleLeadTag().
   let be=l.budgetEntryId?entries.find(e=>e.id===l.budgetEntryId):null;
-  if(!be&&(cat==='SaaS Expert'||cat==='Kursusudbydere')){
-    const catTag=cat==='SaaS Expert'?'expert':'kursusudbyder';
+  if(!be&&(l.tags||[]).includes('budget')&&(cat==='SaaS Expert'||cat==='Kursusudbydere')){
+    // Lead har budget-tag men ingen post → opret kun den manglende post
     be={id:nextId++,name,entity:'Futurematch',type:'ind-saas',amount:amt,category:cat,
       leadId:l.id,inBudget:true,pipelineTags:['budget']};
     entries.push(be);
     l.budgetEntryId=be.id;
-    if(!l.tags)l.tags=[];
-    if(!l.tags.includes('budget'))l.tags.push('budget');
-    if(!l.tags.includes(catTag))l.tags.push(catTag);
   }
   if(be){
     be.name=name;be.amount=amt;be.category=cat;
