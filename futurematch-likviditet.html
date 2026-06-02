@@ -163,6 +163,7 @@
     <button class="tab" data-tab="fakturering" onclick="sw('fakturering',this)" style="color:#0891b2">Fakturering 🧾</button>
     <button class="tab" data-tab="fm-forecast" onclick="sw('fm-forecast',this)" style="color:#7c3aed">FM Forecast 🔮</button>
     <button class="tab active" data-tab="futurematch" onclick="sw('futurematch',this)">FM Budget</button>
+    <button class="tab" data-tab="briefing" onclick="sw('briefing',this)" style="color:#059669">Briefing 🎓</button>
     <button class="tab" data-tab="privat" onclick="sw('privat',this)">Privat</button>
     <button class="tab" data-tab="pension" onclick="sw('pension',this)">Pension</button>
     <button class="tab" data-tab="laan" onclick="sw('laan',this)">Lån</button>
@@ -249,6 +250,18 @@
     <div id="fm-debt"></div>
     <div id="fm-kredit-needed" style="margin-top:16px"></div>
 
+  </div>
+
+  <!-- BRIEFING — Eksperter månedlig briefing -->
+  <div id="tab-briefing" style="display:none">
+    <div class="section-hdr budget-hdr" style="border-left:3px solid #059669">
+      <span class="section-hdr-label" style="color:#10b981">🎓 Briefing</span>
+      <span class="section-hdr-desc">Månedlig 30-min briefing pr. ekspert — del af abonnementet</span>
+    </div>
+    <div id="briefing-month-bar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div id="briefing-missing" style="margin-bottom:16px"></div>
+    <div class="stats" id="briefing-stats" style="margin-bottom:16px"></div>
+    <div id="briefing-list"></div>
   </div>
 
   <!-- PRIVAT -->
@@ -1987,8 +2000,8 @@ function renderEntityDebt(ent,containerId){
 
 
 // ── Tabs ───────────────────────────────────────────────────
-const ALL_TABS=['futurematch','privat','pension','laan','hus','spanien','leads-kontakter','leads','fakturering','fm-forecast'];
-const TAB_TITLES={futurematch:'FM Budget',privat:'Budget — Privat',pension:'Pension',laan:'Lån & Gæld',hus:'🏠 Hus — Salgssimulering',spanien:'Spanien 🇪🇸','leads-kontakter':'Leads kontakter',leads:'Leads — Pipeline',fakturering:'Fakturering','fm-forecast':'FM Forecast 🔮'};
+const ALL_TABS=['futurematch','briefing','privat','pension','laan','hus','spanien','leads-kontakter','leads','fakturering','fm-forecast'];
+const TAB_TITLES={futurematch:'FM Budget',briefing:'Briefing 🎓 — Eksperter',privat:'Budget — Privat',pension:'Pension',laan:'Lån & Gæld',hus:'🏠 Hus — Salgssimulering',spanien:'Spanien 🇪🇸','leads-kontakter':'Leads kontakter',leads:'Leads — Pipeline',fakturering:'Fakturering','fm-forecast':'FM Forecast 🔮'};
 function sw(id,btn){
   ALL_TABS.forEach(t=>document.getElementById('tab-'+t).style.display='none');
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
@@ -2004,6 +2017,8 @@ function renderTabContent(id){
   if(id==='futurematch'){
     renderEntity('Futurematch','fm-stats','c-fm-bar','c-fm-bal','fm-table');
     renderFmKreditNeeded();
+  } else if(id==='briefing'){
+    renderBriefing();
   } else if(id==='privat'){
     renderEntity('Privat','priv-stats','c-priv-bar','c-priv-bal','priv-table');
   } else if(id==='pension'){
@@ -5640,6 +5655,189 @@ function fakturMonthsForLead(lead,year){
   return result;
 }
 
+// ── BRIEFING — Månedlig 30-min ekspert-briefing ──────────
+let briefingData={notes:{},monthly:{}};
+let briefingActiveMonth=null; // {year, month} | null = denne måned
+function loadBriefing(){
+  try{const s=localStorage.getItem('fm-briefing');if(s)briefingData=JSON.parse(s);}catch(e){}
+  if(!briefingData.notes)briefingData.notes={};
+  if(!briefingData.monthly)briefingData.monthly={};
+}
+function saveBriefing(){
+  try{localStorage.setItem('fm-briefing',JSON.stringify(briefingData));syncToServer();}catch(e){}
+}
+function briefingMonthKey(y,m){return `${y}-${String(m).padStart(2,'0')}`;}
+function briefingCurMonth(){
+  if(briefingActiveMonth)return briefingActiveMonth;
+  const d=new Date();
+  return{year:d.getFullYear(),month:d.getMonth()+1};
+}
+function briefingStateFor(leadId,y,m){
+  const k=`${leadId}-${briefingMonthKey(y,m)}`;
+  return briefingData.monthly[k]||{};
+}
+function briefingToggle(leadId,field){
+  const{year,month}=briefingCurMonth();
+  const k=`${leadId}-${briefingMonthKey(year,month)}`;
+  if(!briefingData.monthly[k])briefingData.monthly[k]={};
+  const cur=briefingData.monthly[k][field];
+  if(cur){delete briefingData.monthly[k][field];delete briefingData.monthly[k][field+'_at'];}
+  else{briefingData.monthly[k][field]=true;briefingData.monthly[k][field+'_at']=new Date().toISOString();}
+  saveBriefing();renderBriefing();
+}
+function briefingUpdateNote(leadId,val){
+  briefingData.notes[leadId]=val;
+  saveBriefing();
+}
+function briefingUpdateMonthNote(leadId,val){
+  const{year,month}=briefingCurMonth();
+  const k=`${leadId}-${briefingMonthKey(year,month)}`;
+  if(!briefingData.monthly[k])briefingData.monthly[k]={};
+  briefingData.monthly[k].monthNote=val;
+  saveBriefing();
+}
+function briefingChangeMonth(delta){
+  const{year,month}=briefingCurMonth();
+  let m=month+delta,y=year;
+  if(m<1){m=12;y--;}
+  if(m>12){m=1;y++;}
+  briefingActiveMonth={year:y,month:m};
+  renderBriefing();
+}
+function briefingResetMonth(){
+  briefingActiveMonth=null;
+  renderBriefing();
+}
+function renderBriefing(){
+  loadBriefing();
+  const{year,month}=briefingCurMonth();
+  const MONTH_NAMES=['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+  const monthLabel=`${MONTH_NAMES[month-1]} ${year}`;
+  const now=new Date();
+  const isCurMonth=year===now.getFullYear()&&month===now.getMonth()+1;
+
+  // Eksperter = SaaS Expert-leads med budget-tag (kunder i FM Budget)
+  const experts=leads.filter(l=>
+    !l.converted&&l.status!=='converted'&&
+    l.category==='SaaS Expert'&&
+    (l.tags||[]).includes('budget')&&
+    !(l.tags||[]).includes('ikke-interesseret')&&
+    !((l.tags||[]).includes('afsluttes')&&!(l.tags||[]).includes('leads'))
+  );
+
+  // Måned-vælger
+  const monthBarEl=document.getElementById('briefing-month-bar');
+  if(monthBarEl){
+    monthBarEl.innerHTML=`
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.08em">Briefing-måned</span>
+        <button onclick="briefingChangeMonth(-1)" style="background:#fff;border:1px solid #6ee7b7;border-radius:8px;color:#065f46;padding:5px 10px;font-size:13px;cursor:pointer;font-weight:600">←</button>
+        <span style="font-size:15px;font-weight:800;color:#065f46;min-width:140px;text-align:center">${monthLabel}${isCurMonth?' <span style="font-size:10px;color:#10b981;font-weight:600">(nu)</span>':''}</span>
+        <button onclick="briefingChangeMonth(1)" style="background:#fff;border:1px solid #6ee7b7;border-radius:8px;color:#065f46;padding:5px 10px;font-size:13px;cursor:pointer;font-weight:600">→</button>
+        ${!isCurMonth?'<button onclick="briefingResetMonth()" style="background:none;border:none;color:#065f46;font-size:11px;cursor:pointer;text-decoration:underline">Spring til nu</button>':''}
+      </div>
+      <div style="font-size:11px;color:#065f46">${experts.length} eksperter med 💰 Budget FM</div>
+    `;
+  }
+
+  // Statistik
+  const statsEl=document.getElementById('briefing-stats');
+  const fullyBriefed=experts.filter(l=>{
+    const s=briefingStateFor(l.id,year,month);
+    return s.contacted&&s.historier&&s.qrRatings&&s.someShared;
+  }).length;
+  const contacted=experts.filter(l=>briefingStateFor(l.id,year,month).contacted).length;
+  const notContacted=experts.length-contacted;
+  if(statsEl){
+    statsEl.innerHTML=
+      statCard('Eksperter (kunder)',experts.length,'#059669','Med 💰 Budget FM')+
+      statCard('Kontaktet',contacted,'#10b981',`${notContacted} mangler kontakt`)+
+      statCard('Fuldt briefet',fullyBriefed,'#7c3aed','Alle 4 punkter ✓')+
+      statCard('Mangler stadig',experts.length-fullyBriefed,'#dc2626','for at undgå churn');
+  }
+
+  // "Mangler kontakt" øverst
+  const missingEl=document.getElementById('briefing-missing');
+  if(missingEl){
+    const missing=experts.filter(l=>!briefingStateFor(l.id,year,month).contacted);
+    if(missing.length===0){
+      missingEl.innerHTML=`<div style="background:#d1fae5;border:1px solid #10b981;border-radius:12px;padding:14px 18px;color:#065f46;font-weight:700;font-size:13px">✅ Alle eksperter er kontaktet i ${monthLabel} — godt gået!</div>`;
+    } else {
+      const chips=missing.map(l=>`<button onclick="goToLead(${l.id})" style="background:#fff;border:1px solid #fca5a5;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;color:#dc2626;cursor:pointer;white-space:nowrap" title="Gå til lead">${l.name}</button>`).join('');
+      missingEl.innerHTML=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:14px 18px">
+        <div style="font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">⚠️ Mangler kontakt i ${monthLabel} (${missing.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      </div>`;
+    }
+  }
+
+  // Liste over eksperter
+  const listEl=document.getElementById('briefing-list');
+  if(!listEl)return;
+  if(experts.length===0){
+    listEl.innerHTML=`<div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:36px;text-align:center;color:#94a3b8;font-size:13px">Ingen eksperter med 💰 Budget FM-tag endnu.<br><span style="font-size:11px">Tag dine SaaS Expert-leads med "Budget FM" for at se dem her.</span></div>`;
+    return;
+  }
+  // Sortér: ikke-kontaktede først, derefter manglende felter, så fuldt færdige nederst
+  const sortedExperts=[...experts].sort((a,b)=>{
+    const sa=briefingStateFor(a.id,year,month),sb=briefingStateFor(b.id,year,month);
+    const ca=(sa.contacted?1:0)+(sa.historier?1:0)+(sa.qrRatings?1:0)+(sa.someShared?1:0);
+    const cb=(sb.contacted?1:0)+(sb.historier?1:0)+(sb.qrRatings?1:0)+(sb.someShared?1:0);
+    return ca-cb;
+  });
+
+  listEl.innerHTML=sortedExperts.map(l=>{
+    const state=briefingStateFor(l.id,year,month);
+    const total=4;
+    const done=(state.contacted?1:0)+(state.historier?1:0)+(state.qrRatings?1:0)+(state.someShared?1:0);
+    const allDone=done===total;
+    const noneDone=done===0;
+    const agreement=(briefingData.notes[l.id]||'').replace(/"/g,'&quot;');
+    const monthNote=(state.monthNote||'').replace(/"/g,'&quot;');
+    const cardBg=allDone?'#f0fdf4':noneDone?'#fff':'#fefce8';
+    const cardBorder=allDone?'#86efac':noneDone?'#e2e8f0':'#fde68a';
+    const mkCheckRow=(field,icon,label,desc)=>{
+      const on=!!state[field];
+      const at=state[field+'_at']?new Date(state[field+'_at']).toLocaleDateString('da-DK'):'';
+      return`<div onclick="briefingToggle(${l.id},'${field}')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${on?'#d1fae5':'#f8fafc'};border:1px solid ${on?'#6ee7b7':'#e2e8f0'};border-radius:10px;cursor:pointer;transition:all .12s">
+        <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${on?'#10b981':'#cbd5e1'};background:${on?'#10b981':'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#fff;font-weight:900">${on?'✓':''}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:${on?'#065f46':'#0f172a'}">${icon} ${label}</div>
+          <div style="font-size:10px;color:#64748b">${desc}${at?` · ${at}`:''}</div>
+        </div>
+      </div>`;
+    };
+    return`<div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:14px;padding:16px 18px;margin-bottom:12px;transition:all .15s">
+      <div style="display:flex;align-items:start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <div>
+          <a href="#" onclick="event.preventDefault();goToLead(${l.id})" style="font-size:16px;font-weight:800;color:#0f172a;text-decoration:none;border-bottom:1px dashed #cbd5e1">${l.name}</a>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">⭐ SaaS Expert · ${fmt(l.amount||0)} kr${leadFreqLabel(l)} ${l.owner?`· ${l.owner}`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:11px;font-weight:700;color:${allDone?'#10b981':done>0?'#d97706':'#94a3b8'}">${done}/${total} klaret</div>
+          ${allDone?'<span style="font-size:18px">✅</span>':''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">
+        ${mkCheckRow('contacted','📞','Kontaktet','Tag fat for månedlig 30-min')}
+        ${mkCheckRow('historier','📖','Historier','Gennemgået hvad vi deler')}
+        ${mkCheckRow('qrRatings','📱','QR-koder & Ratings','Status på deling')}
+        ${mkCheckRow('someShared','📲','SoMe-deling','Tilfældigt opslag med link')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📌 Fast aftale (vises altid)</div>
+          <textarea oninput="briefingUpdateNote(${l.id},this.value)" placeholder="Fx: Vil have 2 historier delt pr. mdr, fokus på finans-branchen..." style="width:100%;min-height:60px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;resize:vertical;box-sizing:border-box">${agreement}</textarea>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📝 Note for ${MONTH_NAMES[month-1]}</div>
+          <textarea oninput="briefingUpdateMonthNote(${l.id},this.value)" placeholder="Hvad blev aftalt i denne måned..." style="width:100%;min-height:60px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;resize:vertical;box-sizing:border-box">${monthNote}</textarea>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderFakturering(){
   const el=document.getElementById('fakturering-content');
   if(!el)return;
@@ -5812,7 +6010,7 @@ function renderAll(){
 }
 
 // ── Eksportér / Importér data ─────────────────────────────
-const DATA_KEYS=['fm-entries','fm-kb','fm-kassekred','fm-cascade','fm-konsulent','fm-leads','fm-ark','fm-fakturering'];
+const DATA_KEYS=['fm-entries','fm-kb','fm-kassekred','fm-cascade','fm-konsulent','fm-leads','fm-ark','fm-fakturering','fm-briefing'];
 function exportData(){
   const snapshot={version:1,exported:new Date().toISOString(),data:{}};
   DATA_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v)snapshot.data[k]=JSON.parse(v);});
@@ -5838,7 +6036,7 @@ function importData(evt){
       localStorage.setItem('fm-just-imported','1');
       // Also sync to server
       try{
-        const allKeys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark','fm-kassekred','fm-fakturering','fm-cascade'];
+        const allKeys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark','fm-kassekred','fm-fakturering','fm-cascade','fm-briefing'];
         const data={};
         allKeys.forEach(k=>{try{const v=localStorage.getItem(k);if(v!==null)data[k]=JSON.parse(v);}catch(ex){}});
         await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
@@ -6323,7 +6521,7 @@ function loadArk(){
   try{const s=localStorage.getItem('fm-ark');if(s){const d=JSON.parse(s);if(d.maalgrupper)document.getElementById('ark-maalgrupper').innerHTML=d.maalgrupper;if(d.vaerktoejer)document.getElementById('ark-vaerktoejer').innerHTML=d.vaerktoejer;if(d.tekster)document.getElementById('ark-tekster').innerHTML=d.tekster;}}catch(e){}
 }
 function syncToServer(){
-  const keys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark'];
+  const keys=['fm-entries','fm-leads','fm-lead-targets','fm-kb','fm-konsulent','fm-cat-fc','fm-fc-ov','fm-laan-fc','fm-ark','fm-fakturering','fm-kassekred','fm-cascade','fm-briefing'];
   const data={};
   keys.forEach(k=>{try{const v=localStorage.getItem(k);if(v!==null)data[k]=JSON.parse(v);}catch(e){}});
   fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).catch(()=>{});
@@ -6534,7 +6732,7 @@ async function initApp(){
     if(entChanged)saveEntries();
     localStorage.setItem('fm-leads-fix-v2','1');
   }
-  loadKb();loadKbKassekred();loadArk();loadFakturering();
+  loadKb();loadKbKassekred();loadArk();loadFakturering();loadBriefing();
   // Sikr at alle Budget FM-leads har en gyldig budget-post
   syncBudgetLeadsToEntries();
   // Reset alle filtreringer ved sideindlæsning
