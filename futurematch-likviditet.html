@@ -259,8 +259,10 @@
       <span class="section-hdr-desc">Månedlig 30-min briefing pr. ekspert — del af abonnementet</span>
     </div>
     <div id="briefing-month-bar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div id="briefing-overdue" style="margin-bottom:16px"></div>
     <div id="briefing-missing" style="margin-bottom:16px"></div>
     <div class="stats" id="briefing-stats" style="margin-bottom:16px"></div>
+    <div id="briefing-tagcloud" style="margin-bottom:16px"></div>
     <div id="briefing-list"></div>
   </div>
 
@@ -5656,12 +5658,14 @@ function fakturMonthsForLead(lead,year){
 }
 
 // ── BRIEFING — Månedlig 30-min ekspert-briefing ──────────
-let briefingData={notes:{},monthly:{}};
+let briefingData={notes:{},monthly:{},log:{}};
 let briefingActiveMonth=null; // {year, month} | null = denne måned
+let briefingTagFilter=null;   // null = vis alle; ellers tag-streng
 function loadBriefing(){
   try{const s=localStorage.getItem('fm-briefing');if(s)briefingData=JSON.parse(s);}catch(e){}
   if(!briefingData.notes)briefingData.notes={};
   if(!briefingData.monthly)briefingData.monthly={};
+  if(!briefingData.log)briefingData.log={};
 }
 function saveBriefing(){
   try{localStorage.setItem('fm-briefing',JSON.stringify(briefingData));syncToServer();}catch(e){}
@@ -5696,6 +5700,28 @@ function briefingUpdateMonthNote(leadId,val){
   briefingData.monthly[k].monthNote=val;
   saveBriefing();
 }
+function briefingAddLog(leadId){
+  const inp=document.getElementById('briefing-log-input-'+leadId);
+  if(!inp)return;
+  const txt=(inp.value||'').trim();
+  if(!txt)return;
+  if(!briefingData.log[leadId])briefingData.log[leadId]=[];
+  briefingData.log[leadId].push({at:new Date().toISOString(),text:txt});
+  inp.value='';
+  saveBriefing();renderBriefing();
+}
+function briefingLogKey(e,leadId){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();briefingAddLog(leadId);}
+}
+function briefingDeleteLog(leadId,idx){
+  if(!briefingData.log[leadId])return;
+  briefingData.log[leadId].splice(idx,1);
+  saveBriefing();renderBriefing();
+}
+function briefingSetTagFilter(tag){
+  briefingTagFilter=(briefingTagFilter===tag)?null:tag;
+  renderBriefing();
+}
 function briefingChangeMonth(delta){
   const{year,month}=briefingCurMonth();
   let m=month+delta,y=year;
@@ -5716,11 +5742,18 @@ function renderBriefing(){
   const now=new Date();
   const isCurMonth=year===now.getFullYear()&&month===now.getMonth()+1;
 
-  // Eksperter = SaaS Expert-leads med budget-tag (kunder i FM Budget)
+  // Eksperter = alle der figurerer som SaaS Expert-indtægt i FM Budget
+  // (via tilknyttet entry) ELLER SaaS Expert-leads med budget-tag.
+  const expertLeadIds=new Set();
+  entries.forEach(e=>{
+    if(e.entity==='Futurematch'&&e.type&&e.type.startsWith('ind')&&e.category==='SaaS Expert'&&e.leadId){
+      expertLeadIds.add(e.leadId);
+    }
+  });
   const experts=leads.filter(l=>
     !l.converted&&l.status!=='converted'&&
-    l.category==='SaaS Expert'&&
-    (l.tags||[]).includes('budget')&&
+    ( expertLeadIds.has(l.id) ||
+      (l.category==='SaaS Expert'&&(l.tags||[]).includes('budget')) )&&
     !(l.tags||[]).includes('ikke-interesseret')&&
     !((l.tags||[]).includes('afsluttes')&&!(l.tags||[]).includes('leads'))
   );
@@ -5748,12 +5781,64 @@ function renderBriefing(){
   }).length;
   const contacted=experts.filter(l=>briefingStateFor(l.id,year,month).contacted).length;
   const notContacted=experts.length-contacted;
+  const cCard=(label,value,color,sub='')=>`<div class="stat"><div class="stat-label">${label}</div><div class="stat-value" style="color:${color}">${value}</div>${sub?`<div class="stat-sub">${sub}</div>`:''}</div>`;
   if(statsEl){
     statsEl.innerHTML=
-      statCard('Eksperter (kunder)',experts.length,'#059669','Med 💰 Budget FM')+
-      statCard('Kontaktet',contacted,'#10b981',`${notContacted} mangler kontakt`)+
-      statCard('Fuldt briefet',fullyBriefed,'#7c3aed','Alle 4 punkter ✓')+
-      statCard('Mangler stadig',experts.length-fullyBriefed,'#dc2626','for at undgå churn');
+      cCard('Eksperter (kunder)',experts.length,'#059669','Med 💰 Budget FM')+
+      cCard('Kontaktet',contacted,'#10b981',`${notContacted} mangler kontakt`)+
+      cCard('Fuldt briefet',fullyBriefed,'#7c3aed','Alle 4 punkter ✓')+
+      cCard('Mangler stadig',experts.length-fullyBriefed,'#dc2626','for at undgå churn');
+  }
+
+  // "Skal tage fat på nu" — ikke kontaktet + nextContact-dato passeret
+  const overdueEl=document.getElementById('briefing-overdue');
+  if(overdueEl){
+    const todayStr=new Date().toISOString().slice(0,10);
+    const overdue=experts.filter(l=>
+      !briefingStateFor(l.id,year,month).contacted&&
+      l.nextContact&&l.nextContact<todayStr
+    ).sort((a,b)=>a.nextContact.localeCompare(b.nextContact));
+    if(overdue.length===0){
+      overdueEl.innerHTML='';
+    } else {
+      const chips=overdue.map(l=>{
+        const days=Math.round((new Date(todayStr+'T00:00:00')-new Date(l.nextContact+'T00:00:00'))/86400000);
+        return`<button onclick="goToLead(${l.id})" style="background:#fff;border:1px solid #fdba74;border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;color:#c2410c;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px" title="Dato: ${l.nextContact}">${l.name}<span style="font-size:10px;font-weight:600;color:#9a3412;background:#ffedd5;border-radius:10px;padding:1px 7px">${days} dag${days===1?'':'e'} over</span></button>`;
+      }).join('');
+      overdueEl.innerHTML=`<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:14px 18px">
+        <div style="font-size:12px;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">🔥 Skal tage fat på nu (${overdue.length})</div>
+        <div style="font-size:11px;color:#9a3412;margin-bottom:8px">Ikke kontaktet og kontaktdatoen er passeret</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      </div>`;
+    }
+  }
+
+  // Tag cloud — sortér på tags blandt ikke-kontaktede eksperter
+  const tagCloudEl=document.getElementById('briefing-tagcloud');
+  if(tagCloudEl){
+    const notContactedExperts=experts.filter(l=>!briefingStateFor(l.id,year,month).contacted);
+    const tagCount={};
+    notContactedExperts.forEach(l=>(l.tags||[]).forEach(t=>{tagCount[t]=(tagCount[t]||0)+1;}));
+    const tags=Object.keys(tagCount).sort((a,b)=>tagCount[b]-tagCount[a]);
+    if(tags.length===0||notContactedExperts.length===0){
+      tagCloudEl.innerHTML='';
+    } else {
+      const tagDef=t=>(typeof LEAD_TAGS!=='undefined'?LEAD_TAGS.find(x=>x.id===t):null);
+      const chips=tags.map(t=>{
+        const d=tagDef(t);
+        const lbl=d?`${d.icon||''} ${d.label}`:t;
+        const active=briefingTagFilter===t;
+        return`<button onclick="briefingSetTagFilter('${t}')" style="background:${active?'#059669':'#fff'};border:1px solid ${active?'#059669':'#cbd5e1'};border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700;color:${active?'#fff':'#334155'};cursor:pointer;white-space:nowrap">${lbl} <span style="opacity:.7">${tagCount[t]}</span></button>`;
+      }).join('');
+      const clearBtn=briefingTagFilter?`<button onclick="briefingSetTagFilter('${briefingTagFilter}')" style="background:none;border:none;color:#dc2626;font-size:11px;cursor:pointer;text-decoration:underline;font-weight:600">Ryd filter ✕</button>`:'';
+      tagCloudEl.innerHTML=`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em">🏷️ Sortér ikke-kontaktede på tag</div>
+          ${clearBtn}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      </div>`;
+    }
   }
 
   // "Mangler kontakt" øverst
@@ -5778,8 +5863,16 @@ function renderBriefing(){
     listEl.innerHTML=`<div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:36px;text-align:center;color:#94a3b8;font-size:13px">Ingen eksperter med 💰 Budget FM-tag endnu.<br><span style="font-size:11px">Tag dine SaaS Expert-leads med "Budget FM" for at se dem her.</span></div>`;
     return;
   }
+  // Tag-filter (fra tag cloud) — gælder kun ikke-kontaktede
+  let viewExperts=experts;
+  if(briefingTagFilter){
+    viewExperts=experts.filter(l=>
+      !briefingStateFor(l.id,year,month).contacted&&
+      (l.tags||[]).includes(briefingTagFilter)
+    );
+  }
   // Sortér: ikke-kontaktede først, derefter manglende felter, så fuldt færdige nederst
-  const sortedExperts=[...experts].sort((a,b)=>{
+  const sortedExperts=[...viewExperts].sort((a,b)=>{
     const sa=briefingStateFor(a.id,year,month),sb=briefingStateFor(b.id,year,month);
     const ca=(sa.contacted?1:0)+(sa.historier?1:0)+(sa.qrRatings?1:0)+(sa.someShared?1:0);
     const cb=(sb.contacted?1:0)+(sb.historier?1:0)+(sb.qrRatings?1:0)+(sb.someShared?1:0);
@@ -5793,7 +5886,21 @@ function renderBriefing(){
     const allDone=done===total;
     const noneDone=done===0;
     const agreement=(briefingData.notes[l.id]||'').replace(/"/g,'&quot;');
-    const monthNote=(state.monthNote||'').replace(/"/g,'&quot;');
+    const logArr=(briefingData.log[l.id]||[]);
+    const escLog=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const logHtml=logArr.length===0
+      ? `<div style="font-size:11px;color:#94a3b8;font-style:italic;padding:6px 2px">Ingen log endnu — skriv hvad I har aftalt nedenfor.</div>`
+      : logArr.map((e,i)=>({e,i})).reverse().map(({e,i},vi)=>{
+          const d=new Date(e.at);
+          const stamp=d.toLocaleDateString('da-DK',{day:'2-digit',month:'short',year:'numeric'})+' kl. '+d.toLocaleTimeString('da-DK',{hour:'2-digit',minute:'2-digit'});
+          return`<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:${vi===0?'none':'1px solid #f1f5f9'}">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:10px;font-weight:700;color:#059669;font-family:'DM Mono',monospace">${stamp}</div>
+              <div style="font-size:12px;color:#1e293b;white-space:pre-wrap;word-break:break-word">${escLog(e.text)}</div>
+            </div>
+            <button onclick="briefingDeleteLog(${l.id},${i})" title="Slet" style="background:none;border:none;color:#cbd5e1;cursor:pointer;font-size:13px;padding:0 4px;line-height:1">✕</button>
+          </div>`;
+        }).join('');
     const cardBg=allDone?'#f0fdf4':noneDone?'#fff':'#fefce8';
     const cardBorder=allDone?'#86efac':noneDone?'#e2e8f0':'#fde68a';
     const mkCheckRow=(field,icon,label,desc)=>{
@@ -5824,15 +5931,17 @@ function renderBriefing(){
         ${mkCheckRow('qrRatings','📱','QR-koder & Ratings','Status på deling')}
         ${mkCheckRow('someShared','📲','SoMe-deling','Tilfældigt opslag med link')}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📌 Fast aftale (vises altid)</div>
-          <textarea oninput="briefingUpdateNote(${l.id},this.value)" placeholder="Fx: Vil have 2 historier delt pr. mdr, fokus på finans-branchen..." style="width:100%;min-height:60px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;resize:vertical;box-sizing:border-box">${agreement}</textarea>
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📌 Fast aftale (vises altid)</div>
+        <textarea oninput="briefingUpdateNote(${l.id},this.value)" placeholder="Fx: Vil have 2 historier delt pr. mdr, fokus på finans-branchen..." style="width:100%;min-height:50px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;resize:vertical;box-sizing:border-box">${agreement}</textarea>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🗒️ Logbog — hvad er aftalt (med dato &amp; tid)</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="briefing-log-input-${l.id}" type="text" onkeydown="briefingLogKey(event,${l.id})" placeholder="Skriv hvad I aftalte, tryk Enter…" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;box-sizing:border-box">
+          <button onclick="briefingAddLog(${l.id})" style="background:#059669;border:none;border-radius:8px;color:#fff;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Tilføj</button>
         </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">📝 Note for ${MONTH_NAMES[month-1]}</div>
-          <textarea oninput="briefingUpdateMonthNote(${l.id},this.value)" placeholder="Hvad blev aftalt i denne måned..." style="width:100%;min-height:60px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;background:#fff;resize:vertical;box-sizing:border-box">${monthNote}</textarea>
-        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px">${logHtml}</div>
       </div>
     </div>`;
   }).join('');
