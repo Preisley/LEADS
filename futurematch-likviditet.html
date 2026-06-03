@@ -259,6 +259,10 @@
       <span class="section-hdr-desc">Månedlig 30-min briefing pr. ekspert — del af abonnementet</span>
     </div>
     <div id="briefing-month-bar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div style="position:relative;margin-bottom:14px">
+      <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:14px;color:#94a3b8">🔍</span>
+      <input id="briefing-search" type="text" oninput="briefingSetSearch(this.value)" placeholder="Søg efter ekspert…" style="width:100%;padding:11px 14px 11px 40px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#0f172a;outline:none;font-family:'DM Sans',sans-serif;background:#fff;box-sizing:border-box">
+    </div>
     <div id="briefing-overdue" style="margin-bottom:16px"></div>
     <div id="briefing-plan" style="margin-bottom:16px"></div>
     <div id="briefing-backlog" style="margin-bottom:16px"></div>
@@ -5661,16 +5665,18 @@ function fakturMonthsForLead(lead,year){
 }
 
 // ── BRIEFING — Månedlig 30-min ekspert-briefing ──────────
-let briefingData={notes:{},monthly:{},log:{},reach:{}};
+let briefingData={notes:{},monthly:{},log:{},reach:{},flags:{}};
 let briefingActiveMonth=null; // {year, month} | null = denne måned
 let briefingTagFilter=null;   // null = vis alle; ellers tag-streng
 let briefingReachFilter=null; // null = vis alle; ellers "Tag fat på"-værdi
+let briefingSearch='';        // fritekst-søgning på ekspertnavn
 function loadBriefing(){
   try{const s=localStorage.getItem('fm-briefing');if(s)briefingData=JSON.parse(s);}catch(e){}
   if(!briefingData.notes)briefingData.notes={};
   if(!briefingData.monthly)briefingData.monthly={};
   if(!briefingData.log)briefingData.log={};
   if(!briefingData.reach)briefingData.reach={};
+  if(!briefingData.flags)briefingData.flags={};
 }
 function saveBriefing(){
   try{localStorage.setItem('fm-briefing',JSON.stringify(briefingData));syncToServer();}catch(e){}
@@ -5740,6 +5746,17 @@ function briefingSetDate(leadId,date){
   if(!l)return;
   if(date)l.nextContact=date;else delete l.nextContact;
   saveLeads();renderBriefing();
+}
+function briefingSetSearch(val){
+  briefingSearch=val;
+  renderBriefing();
+}
+function briefingToggleFlag(leadId,field){
+  if(!briefingData.flags[leadId])briefingData.flags[leadId]={};
+  const cur=briefingData.flags[leadId][field];
+  if(cur){delete briefingData.flags[leadId][field];delete briefingData.flags[leadId][field+'_at'];}
+  else{briefingData.flags[leadId][field]=true;briefingData.flags[leadId][field+'_at']=new Date().toISOString();}
+  saveBriefing();renderBriefing();
 }
 function briefingChangeMonth(delta){
   const{year,month}=briefingCurMonth();
@@ -5989,6 +6006,14 @@ function renderBriefing(){
   if(briefingReachFilter){
     viewExperts=viewExperts.filter(l=>(briefingData.reach[l.id]||'').trim()===briefingReachFilter);
   }
+  const searchQ=(briefingSearch||'').trim().toLowerCase();
+  if(searchQ){
+    viewExperts=viewExperts.filter(l=>(l.name||'').toLowerCase().includes(searchQ));
+  }
+  if(viewExperts.length===0){
+    listEl.innerHTML=`<div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:28px;text-align:center;color:#94a3b8;font-size:13px">Ingen eksperter matcher${searchQ?` "${searchQ.replace(/</g,'&lt;')}"`:' filteret'}.</div>`;
+    return;
+  }
   // Sortér: ikke-kontaktede først, derefter manglende felter, så fuldt færdige nederst
   const sortedExperts=[...viewExperts].sort((a,b)=>{
     const sa=briefingStateFor(a.id,year,month),sb=briefingStateFor(b.id,year,month);
@@ -6032,6 +6057,18 @@ function renderBriefing(){
         </div>
       </div>`;
     };
+    const flags=briefingData.flags[l.id]||{};
+    const mkFlagRow=(field,icon,label,desc,onCol,onBg,onBorder)=>{
+      const on=!!flags[field];
+      const at=flags[field+'_at']?new Date(flags[field+'_at']).toLocaleDateString('da-DK'):'';
+      return`<div onclick="briefingToggleFlag(${l.id},'${field}')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${on?onBg:'#f8fafc'};border:1px solid ${on?onBorder:'#e2e8f0'};border-radius:10px;cursor:pointer;transition:all .12s">
+        <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${on?onCol:'#cbd5e1'};background:${on?onCol:'#fff'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#fff;font-weight:900">${on?'✓':''}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:${on?onCol:'#0f172a'}">${icon} ${label}</div>
+          <div style="font-size:10px;color:#64748b">${desc}${at?` · siden ${at}`:''}</div>
+        </div>
+      </div>`;
+    };
     return`<div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:14px;padding:16px 18px;margin-bottom:12px;transition:all .15s">
       <div style="display:flex;align-items:start;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
         <div>
@@ -6059,6 +6096,13 @@ function renderBriefing(){
         ${mkCheckRow('historier','📖','Historier','Gennemgået hvad vi deler')}
         ${mkCheckRow('qrRatings','📱','QR-koder & Ratings','Status på deling')}
         ${mkCheckRow('someShared','📲','SoMe-deling','Tilfældigt opslag med link')}
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Status (løbende — ikke pr. måned)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+          ${mkFlagRow('linkedin','💼','Følger LinkedIn-gruppen','Med i vores LinkedIn-gruppe','#0a66c2','#e0f2fe','#7dd3fc')}
+          ${mkFlagRow('newsletter','📧','På nyhedsbrevet','Tilmeldt vores nyhedsbrev','#7c3aed','#f3e8ff','#d8b4fe')}
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
         <div>
