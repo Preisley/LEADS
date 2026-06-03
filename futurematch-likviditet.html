@@ -3858,9 +3858,14 @@ function toggleLeadTag(id,tagId){
       l.forecastEntryId=null;
       saveEntries();
     }
-    // Budget tag OFF → remove linked Futurematch entry
-    if(tagId==='budget'&&l.budgetEntryId){
-      entries=entries.filter(e=>e.id!==l.budgetEntryId);
+    // Budget tag OFF → fjern ALLE tilknyttede Futurematch-budgetposter (også "forældreløse"
+    // poster der kun er linket via leadId), så fjernelsen er endegyldig og tagget ikke
+    // kan komme snigende tilbage via en synk/migration.
+    if(tagId==='budget'){
+      entries=entries.filter(e=>!(
+        e.id===l.budgetEntryId ||
+        (e.entity==='Futurematch'&&e.leadId===l.id&&e.type&&e.type.startsWith('ind'))
+      ));
       l.budgetEntryId=null;
       saveEntries();
     }
@@ -6954,10 +6959,7 @@ async function initApp(){
         if(!e.pipelineTags)e.pipelineTags=[];
         if(!e.pipelineTags.includes('forecast')){e.pipelineTags.push('forecast');changed=true;}
       }
-      if(e.entity==='Futurematch'&&e.leadId&&e.inBudget===true){
-        if(!e.pipelineTags)e.pipelineTags=[];
-        if(!e.pipelineTags.includes('budget')){e.pipelineTags.push('budget');changed=true;}
-      }
+      // BEMÆRK: 'budget'-tagget tilføjes ALDRIG automatisk — kun brugeren styrer det.
     });
     if(changed)saveEntries();
     localStorage.setItem('fm-v2-restore','1');
@@ -6969,12 +6971,10 @@ async function initApp(){
       (e.category==='SaaS Expert'||e.category==='Kursusudbydere')&&!e.leadId
     ).forEach(e=>{
       const catTag=e.category==='SaaS Expert'?'expert':'kursusudbyder';
+      // 'budget'-tag tilføjes IKKE automatisk — brugeren sætter det selv.
       const newLead={id:nextLeadId++,name:e.name,amount:e.amount,category:e.category,
-        tags:['budget',catTag],createdDate:new Date().toISOString().slice(0,10),log:[],budgetEntryId:e.id};
+        tags:[catTag],createdDate:new Date().toISOString().slice(0,10),log:[]};
       e.leadId=newLead.id;
-      if(!e.pipelineTags)e.pipelineTags=[];
-      if(!e.pipelineTags.includes('budget'))e.pipelineTags.push('budget');
-      e.inBudget=true;
       leads.push(newLead);
     });
     saveLeads();saveEntries();
@@ -7007,15 +7007,12 @@ async function initApp(){
         delete e.leadId;
         entChanged=true;
       }
-      // If still no valid lead, create one
+      // If still no valid lead, create one — UDEN at auto-tagge 'budget'
       if(!e.leadId||!leads.find(l=>l.id===e.leadId)){
         const catTag=e.category==='SaaS Expert'?'expert':'kursusudbyder';
         const newLead={id:nextLeadId++,name:e.name,amount:e.amount,category:e.category,
-          tags:['budget',catTag],createdDate:new Date().toISOString().slice(0,10),log:[],budgetEntryId:e.id};
+          tags:[catTag],createdDate:new Date().toISOString().slice(0,10),log:[]};
         e.leadId=newLead.id;
-        if(!e.pipelineTags)e.pipelineTags=[];
-        if(!e.pipelineTags.includes('budget'))e.pipelineTags.push('budget');
-        e.inBudget=true;
         leads.push(newLead);
         entChanged=true;leadChanged=true;
       }
